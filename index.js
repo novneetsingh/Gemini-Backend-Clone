@@ -5,8 +5,7 @@ import authRouter from "./routes/auth.route.js";
 import userRouter from "./routes/user.route.js";
 import { prisma } from "./config/prisma.js";
 import chatRoomRouter from "./routes/chatroom.route.js";
-
-// import subscriptionRouter from "./routes/subscription.route.js";
+import subscriptionRouter from "./routes/subscription.route.js";
 
 // Load environment variables
 dotenv.config();
@@ -40,7 +39,7 @@ app.get("/", (req, res) => {
 app.use("/auth", authRouter);
 app.use("/user", userRouter);
 app.use("/chatroom", chatRoomRouter);
-// app.use("/subscription", subscriptionRouter);
+app.use("/subscription", subscriptionRouter);
 
 // Special route for Stripe webhook - needs raw body
 // app.use("/subscription/webhook", express.raw({ type: "application/json" }));

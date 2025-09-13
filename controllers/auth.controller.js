@@ -8,12 +8,12 @@ export const register = async (req, res) => {
   try {
     const { name, mobileNumber, password } = req.body;
 
-    // if (!name || !mobileNumber || !password) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Please provide all required fields",
-    //   });
-    // }
+    if (!name || !mobileNumber || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields",
+      });
+    }
 
     // Check if user already exists
     const existingUser = await prisma.User.findUnique({

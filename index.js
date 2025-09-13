@@ -4,7 +4,8 @@ import cors from "cors";
 import authRouter from "./routes/auth.route.js";
 import userRouter from "./routes/user.route.js";
 import { prisma } from "./config/prisma.js";
-// import chatRouter from "./routes/chat.route.js";
+import chatRoomRouter from "./routes/chatroom.route.js";
+
 // import subscriptionRouter from "./routes/subscription.route.js";
 
 // Load environment variables
@@ -38,8 +39,7 @@ app.get("/", (req, res) => {
 // API routes
 app.use("/auth", authRouter);
 app.use("/user", userRouter);
-
-// app.use("/chat", chatRouter);
+app.use("/chatroom", chatRoomRouter);
 // app.use("/subscription", subscriptionRouter);
 
 // Special route for Stripe webhook - needs raw body

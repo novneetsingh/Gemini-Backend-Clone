@@ -6,6 +6,7 @@ import userRouter from "./routes/user.route.js";
 import { prisma } from "./config/prisma.js";
 import chatRoomRouter from "./routes/chatroom.route.js";
 import subscriptionRouter from "./routes/subscription.route.js";
+import { chatWorker } from "./workers/chatWorker.js";
 
 // Load environment variables
 dotenv.config();
@@ -29,6 +30,9 @@ async function testDbConnection() {
 }
 
 testDbConnection();
+
+// Start chat worker
+chatWorker();
 
 // Routes
 app.get("/", (req, res) => {

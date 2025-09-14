@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
 import { redis } from "./redis.js";
 
 // Create chat processing queue
@@ -13,4 +13,9 @@ export const chatQueue = new Queue("chat-processing", {
     removeOnComplete: true,
     removeOnFail: false,
   },
+});
+
+// Initialize queue events for job completion tracking
+export const queueEvents = new QueueEvents("chat-processing", {
+  connection: redis,
 });

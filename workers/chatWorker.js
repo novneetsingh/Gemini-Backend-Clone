@@ -1,48 +1,43 @@
 import { Worker } from "bullmq";
 import { redis } from "../config/redis.js";
 import { model } from "../config/geminiAI.js";
-import { prisma } from "../config/prisma.js";
 
 // Create worker to process chat messages
-const chatWorker = new Worker(
-  "chat-processing",
-  async (job) => {
-    try {
-      const { userId, message } = job.data;
+export const chatWorker = () => {
+  console.log("Chat worker started...");
 
-      console.log(`Processing chat message for user ${userId}`);
+  new Worker(
+    "chat-processing",
+    async (job) => {
+      try {
+        const { currentMessage, chatHistory } = job.data;
 
-      // Generate response from Gemini AI
-      const result = await model.generateContent(message);
-      const response = await result.response;
-      const aiResponse = response.text();
+        // Format chat history for the prompt
+        const formattedHistory = chatHistory
+          .map((entry) => `Role: ${entry.role}\nMessage: ${entry.text}`)
+          .join("\n");
 
-      // Store chat in database
-      const chat = await prisma.chat.create({
-        data: {
-          userId,
-          userMessage: message,
-          aiResponse,
-        },
-      });
+        const fullPrompt = `You are an AI chat assistant.
+        You are an AI chat assistant.
+        Based on the previous chat history, provide a single, concise response to the user's message.
 
-      console.log(`Chat processed successfully: ${chat.id}`);
-      return { success: true, chatId: chat.id };
-    } catch (error) {
-      console.error("Error processing chat:", error);
-      throw new Error(`Failed to process chat: ${error.message}`);
+        Previous chat history:
+        ${formattedHistory}
+
+        User: ${currentMessage}`;
+
+        // Generate response from Gemini AI using existing chat history
+        const result = await model.generateContent(fullPrompt);
+
+        return result.response.text().trim();
+      } catch (error) {
+        console.error("Worker error:", error);
+        throw error;
+      }
+    },
+    {
+      connection: redis,
+      concurrency: 10,
     }
-  },
-  { connection: redis }
-);
-
-// Handle worker events
-chatWorker.on("completed", (job) => {
-  console.log(`Job ${job.id} completed successfully`);
-});
-
-chatWorker.on("failed", (job, error) => {
-  console.error(`Job ${job.id} failed with error: ${error.message}`);
-});
-
-export default chatWorker;
+  );
+};

@@ -1,6 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
-// import { chatQueue } from "../config/bullmq.js";
+import { chatQueue, queueEvents } from "../config/bullmq.js";
 
 // create a chatroom
 export const createChatroom = async (req, res) => {
@@ -62,21 +62,21 @@ export const getChatrooms = async (req, res) => {
     }
 
     // find the user
-    const user = await prisma.User.findUnique({
-      where: { id: req.user.id },
-      include: { chatrooms: true },
+    const chatrooms = await prisma.Chatroom.findMany({
+      where: { userId: req.user.id },
+      orderBy: { updatedAt: "desc" },
     });
 
     // add chatrooms to cache for 10 minutes
-    if (user) {
-      await redis.setex(cacheKey, 60 * 10, JSON.stringify(user.chatrooms));
+    if (chatrooms) {
+      await redis.setex(cacheKey, 60 * 10, JSON.stringify(chatrooms));
     }
 
     res.status(200).json({
-      success: user ? true : false,
-      message: user ? "Chatrooms fetched successfully" : "User not found",
-      count: user ? user.chatrooms.length : 0,
-      data: user ? user.chatrooms : [],
+      success: chatrooms ? true : false,
+      message: chatrooms ? "Chatrooms fetched successfully" : "User not found",
+      count: chatrooms ? chatrooms.length : 0,
+      data: chatrooms ? chatrooms : [],
     });
   } catch (error) {
     console.error("Error getting chatrooms:", error);
@@ -103,6 +103,67 @@ export const getChatroomById = async (req, res) => {
     });
   } catch (error) {
     console.error("Error getting chatroom:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// chat with AI in a chatroom
+export const chatWithAI = async (req, res) => {
+  try {
+    const { id } = req.params; // chatroom id
+    const { message } = req.body;
+
+    // find the chatroom
+    const chatroom = await prisma.Chatroom.findFirst({
+      where: { id: parseInt(id), userId: req.user.id },
+    });
+
+    if (!chatroom) {
+      return res.status(404).json({
+        success: false,
+        message: "Chatroom not found",
+      });
+    }
+
+    // Create a new job and get its promise
+    const job = await chatQueue.add("process-chat", {
+      currentMessage: message.trim(),
+      chatHistory: chatroom.messages, // Pass existing messages for context
+    });
+
+    // Wait for job to complete
+    const aiResponse = await job.waitUntilFinished(queueEvents);
+
+    const newMessages = [
+      {
+        role: "User",
+        text: message.trim(),
+        timestamp: new Date().toISOString(),
+      },
+      {
+        role: "AI",
+        text: aiResponse,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    // Update chatroom with both messages in one call
+    await prisma.Chatroom.update({
+      where: { id: parseInt(id), userId: req.user.id },
+      data: {
+        messages: {
+          set: [...chatroom.messages, ...newMessages],
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Chat processed successfully",
+      data: aiResponse,
+    });
+  } catch (error) {
+    console.error("Error chatting with AI:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

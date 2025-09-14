@@ -64,6 +64,7 @@ export const getChatrooms = async (req, res) => {
     // find the user
     const chatrooms = await prisma.Chatroom.findMany({
       where: { userId: req.user.id },
+      select: { id: true, updatedAt: true },
       orderBy: { updatedAt: "desc" },
     });
 
@@ -112,20 +113,48 @@ export const chatWithAI = async (req, res) => {
   try {
     const { id } = req.params; // chatroom id
     const { message } = req.body;
+    const userId = parseInt(req.user.id);
 
     // find the chatroom
-    const chatroom = await prisma.Chatroom.findFirst({
-      where: { id: parseInt(id), userId: req.user.id },
-    });
+    const [chatroom, user] = await Promise.all([
+      prisma.Chatroom.findFirst({
+        where: { id: parseInt(id), userId: userId },
+      }),
+      prisma.User.findUnique({
+        where: { id: userId },
+      }),
+    ]);
 
-    if (!chatroom) {
+    if (!chatroom || !user) {
       return res.status(404).json({
         success: false,
-        message: "Chatroom not found",
+        message: "Chatroom not found or User not found",
       });
     }
 
-    // Create a new job and get its promise
+    // handle rate limiting for basic users
+    if (user.tier === "Basic") {
+      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+      const key = `rate_limit:${userId}:${today}`;
+
+      // Increment counter
+      const count = await redis.incr(key);
+
+      // First message today → set expiry for 24h
+      if (count === 1) {
+        await redis.expire(key, 24 * 60 * 60);
+      }
+
+      if (count > 5) {
+        return res.status(429).json({
+          success: false,
+          message:
+            "Daily message limit reached. Upgrade to Pro for unlimited access.",
+        });
+      }
+    }
+
+    // Create a new job in chat queue
     const job = await chatQueue.add("process-chat", {
       currentMessage: message.trim(),
       chatHistory: chatroom.messages, // Pass existing messages for context
@@ -149,7 +178,7 @@ export const chatWithAI = async (req, res) => {
 
     // Update chatroom with both messages in one call
     await prisma.Chatroom.update({
-      where: { id: parseInt(id), userId: req.user.id },
+      where: { id: chatroom.id, userId: userId },
       data: {
         messages: {
           set: [...chatroom.messages, ...newMessages],
